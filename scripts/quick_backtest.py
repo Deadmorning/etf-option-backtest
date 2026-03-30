@@ -43,6 +43,10 @@ def quick_backtest(etf_code: str, start_date: str, end_date: str,
         adjust=""
     )
     etf_data['date'] = pd.to_datetime(etf_data['日期'])
+    # 重命名列
+    etf_data = etf_data.rename(columns={
+        '开盘': 'open', '收盘': 'close', '最高': 'high', '最低': 'low', '成交量': 'volume'
+    })
     etf_data = etf_data.sort_values('date').reset_index(drop=True)
     print(f"   ✓ {len(etf_data)} 个交易日")
     

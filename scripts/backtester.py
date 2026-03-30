@@ -291,6 +291,14 @@ def run_backtest(etf_data_path: str, pricing_data_path: str = None,
     # 加载数据
     print("加载 ETF 数据...")
     etf_data = pd.read_csv(etf_data_path)
+    
+    # 兼容中英文列名
+    if 'date' not in etf_data.columns:
+        etf_data = etf_data.rename(columns={
+            '日期': 'date', '开盘': 'open', '收盘': 'close', 
+            '最高': 'high', '最低': 'low', '成交量': 'volume'
+        })
+    
     etf_data['date'] = pd.to_datetime(etf_data['date'])
     etf_data = etf_data.sort_values('date').reset_index(drop=True)
     
