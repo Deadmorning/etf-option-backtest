@@ -180,6 +180,44 @@ def quick_backtest(etf_code: str, start_date: str, end_date: str,
                 current_capital -= COMMISSION
                 print(f"  反手开仓：{reverse_signal} @{premium:.4f}")
         
+        # 阶段 3: 对冲检查 (获利>5% 触发)
+        if positions and True:  # 简化：每天允许对冲
+            for pos_type, pos in list(positions.items()):
+                days_to_expiry = 30
+                time_to_expiry = days_to_expiry / 365.0
+                
+                current_premium = black(
+                    flag='c' if pos_type == 'call' else 'p',
+                    F=close_price, K=pos['strike'], t=time_to_expiry,
+                    r=RISK_FREE_RATE, sigma=pos['open_iv']
+                )
+                
+                # 计算盈利比例
+                if pos_type == 'call':
+                    pnl_ratio = (current_premium - pos['open_price']) / pos['open_price']
+                else:
+                    pnl_ratio = (pos['open_price'] - current_premium) / pos['open_price']
+                
+                # 获利>5% 触发对冲
+                if pnl_ratio > 0.05:
+                    hedge_strike = round(close_price * 1.05, 2) if pos_type == 'call' else round(close_price * 0.95, 2)
+                    hedge_premium = black(
+                        flag='c' if pos_type == 'call' else 'p',
+                        F=close_price, K=hedge_strike, t=time_to_expiry,
+                        r=RISK_FREE_RATE, sigma=pos['open_iv'] * 0.8
+                    )
+                    
+                    day_trades.append({
+                        'date': date, 'time': '14:30', 'action': '卖出开仓',
+                        'option': f"hedge_{pos_type}_{date}", 'strike': hedge_strike,
+                        'premium': round(hedge_premium, 4), 'quantity': 1,
+                        'commission': COMMISSION, 'pnl': 0.0, 'reason': '获利对冲 (>5%)'
+                    })
+                    
+                    current_capital += hedge_premium * OPTION_MULTIPLIER - COMMISSION
+                    print(f"  获利对冲：{pos_type} 盈利{pnl_ratio*100:.1f}% > 5% → 卖出虚值{hedge_strike}")
+                    break
+        
         # 14:45 清仓
         if positions:
             for pos_type, pos in positions.items():

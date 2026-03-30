@@ -27,7 +27,7 @@ class ETFOptionBacktester:
         # 策略参数
         self.open_threshold = 0.005  # 开盘开仓阈值±0.5%
         self.reverse_threshold = 0.005  # 反手阈值 0.5%
-        self.profit_threshold = 0.20  # 获利对冲阈值 20%
+        self.profit_threshold = 0.05  # 获利对冲阈值 5% (已调低)
         self.check_interval = 30  # 检查间隔 (分钟)
         self.clear_time = "14:45"  # 强制清仓时间
         
