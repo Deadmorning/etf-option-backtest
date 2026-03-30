@@ -185,7 +185,8 @@ def quick_backtest(etf_code: str, start_date: str, end_date: str,
                 print(f"  反手开仓：{reverse_signal} @{premium:.4f}")
         
         # 阶段 3: 对冲检查 (获利>5% 触发)
-        if positions and True:  # 简化：每天允许对冲
+        hedge_positions = {}  # 记录对冲合约
+        if positions:
             for pos_type, pos in list(positions.items()):
                 days_to_expiry = 30
                 time_to_expiry = days_to_expiry / 365.0
@@ -211,18 +212,28 @@ def quick_backtest(etf_code: str, start_date: str, end_date: str,
                         r=RISK_FREE_RATE, sigma=pos['open_iv'] * 0.8
                     )
                     
+                    # 卖出开仓对冲
                     day_trades.append({
                         'date': date, 'time': '14:30', 'action': '卖出开仓',
-                        'option': f"hedge_{pos_type}_{date}", 'strike': hedge_strike,
+                        'option': f"hedge_{pos_type}_{hedge_strike}_{date}",
+                        'strike': hedge_strike,
                         'premium': round(hedge_premium, 4), 'quantity': 1,
-                        'commission': COMMISSION, 'pnl': 0.0, 'reason': '获利对冲 (>5%)'
+                        'commission': COMMISSION, 'pnl': 0.0, 'reason': f'盈利{pnl_ratio*100:.1f}%→对冲'
                     })
                     
                     current_capital += hedge_premium * OPTION_MULTIPLIER - COMMISSION
-                    print(f"  获利对冲：{pos_type} 盈利{pnl_ratio*100:.1f}% > 5% → 卖出虚值{hedge_strike}")
+                    
+                    # 记录对冲合约用于平仓
+                    hedge_positions[pos_type] = {
+                        'strike': hedge_strike,
+                        'open_price': hedge_premium,
+                        'type': pos_type
+                    }
+                    
+                    print(f"  获利对冲：{pos_type} 盈利{pnl_ratio*100:.1f}% → 卖出虚值{hedge_strike} @{hedge_premium:.4f}")
                     break
         
-        # 14:45 清仓
+        # 14:45 清仓 (包括对冲合约)
         if positions:
             for pos_type, pos in positions.items():
                 days_to_expiry = 30
@@ -251,6 +262,34 @@ def quick_backtest(etf_code: str, start_date: str, end_date: str,
                 
                 current_capital += pnl
                 print(f"  日终清仓：¥{pnl:+.2f}")
+        
+        # 平仓对冲合约
+        if hedge_positions:
+            for hedge_type, hedge_pos in hedge_positions.items():
+                days_to_expiry = 30
+                time_to_expiry = days_to_expiry / 365.0
+                
+                # 买入平仓对冲合约
+                close_premium = black(
+                    flag='c' if hedge_type == 'call' else 'p',
+                    F=close_price, K=hedge_pos['strike'], t=time_to_expiry,
+                    r=RISK_FREE_RATE, sigma=hedge_pos['open_price'] * 0.9  # 简化估算
+                )
+                
+                # 卖出期权平仓收益 = (开仓价 - 平仓价) * 乘数
+                hedge_pnl = (hedge_pos['open_price'] - close_premium) * OPTION_MULTIPLIER - COMMISSION
+                day_pnl += hedge_pnl
+                
+                day_trades.append({
+                    'date': date, 'time': '14:45', 'action': '买入平仓',
+                    'option': f"hedge_{hedge_type}_{hedge_pos['strike']}_{date}",
+                    'strike': hedge_pos['strike'],
+                    'premium': round(close_premium, 4), 'quantity': 1,
+                    'commission': COMMISSION, 'pnl': hedge_pnl, 'reason': '14:45 强平'
+                })
+                
+                current_capital += hedge_pnl
+                print(f"  对冲平仓：¥{hedge_pnl:+.2f}")
         
         # 记录结果
         daily_return = day_pnl / capital_before * 100
